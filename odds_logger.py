@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 from sportsbooks import SportsBooks
 load_dotenv()
 
-MYDIR = ("mlb_odds")
+DATA_DIR = "mlb_odds"
+DATA_DIR_PATH = os.path.dirname(__file__) + "\\" + DATA_DIR
 
 
 class OddsLogger(object):
@@ -34,6 +35,7 @@ class OddsLogger(object):
             'oddsFormat': 'american'
         }
         odds_req = requests.get(base_url + odds_endpoint, params=params)
+        print(odds_req.headers['x-requests-remaining'])
         odds = json.loads(odds_req.text)
         odds = odds['data']
         self.games = []
@@ -102,12 +104,13 @@ class OddsLogger(object):
         Iterates through dataframes in self.odds_by_month and merges current
         data with existing data prioritizing the most current lines
         """
-        if not os.path.isdir(MYDIR):
-            os.makedirs(MYDIR)
+        if not os.path.isdir(DATA_DIR_PATH):
+            os.makedirs(DATA_DIR_PATH)
         for m in self.odds_by_month:
             month = m['Start Time'][0].strftime("%B")
             year = m['Start Time'][0].year
-            path = MYDIR + "\\" + month + "_" + str(year) + ".csv"
+            path = DATA_DIR_PATH + "\\" + month + "_" + str(year) + ".csv"
+            print(f"Saving {path}")
             if not os.path.exists(path):
                 m.to_csv(path)
             else:
