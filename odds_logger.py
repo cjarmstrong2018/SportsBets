@@ -5,6 +5,7 @@ import numpy as np
 from datetime import datetime as dt
 import os
 from dotenv import load_dotenv
+from sympy import symbols, Eq, solve
 from sportsbooks import SportsBooks
 load_dotenv()
 
@@ -39,6 +40,7 @@ class OddsLogger(object):
         odds = json.loads(odds_req.text)
         odds = odds['data']
         self.games = []
+
         for game in odds:
             if dt.fromtimestamp(game['commence_time']) < dt.now():  # Ignore live odds
                 continue
@@ -52,6 +54,12 @@ class OddsLogger(object):
             odds_by_sb = self.get_all_odds(
                 game['sites'], home_first=home_first, draw_possible=False)
             books_quoting = [s['site_key'] for s in game['sites']]
+
+            # Input arb funcs here!
+            if self.arb_exists(odds_by_sb):
+                # Calculate surebet
+                continue
+
             for book in SportsBooks:
                 if book.name in books_quoting:
                     last_update = dt.fromtimestamp(
@@ -78,6 +86,10 @@ class OddsLogger(object):
                             (not currently supported) 
         '''
         odds = {}
+        odds['Best Home Book'] = None
+        odds['Best Away Book'] = None
+        odds['Best Home Odds'] = -10000
+        odds['Bet Away Odds'] = -1000
         for site in sites:
             name = site['site_key']
             last_update = site['last_update']
@@ -88,6 +100,11 @@ class OddsLogger(object):
             else:
                 home_odds = line[1]
                 away_odds = line[0]
+
+            odds['Best Odds Home'] = home_odds if home_odds > odds['Best Odds Home'] else odds['Best Odds Home']
+            odds['Best Odds Away'] = away_odds if away_odds > odds['Best Odds Away'] else odds['Best Odds Away']
+            odds['Best Book Home'] = name if home_odds > odds['Best Odds Home'] else odds['Best Book Home']
+            odds['Best Book Away'] = name if away_odds > odds['Best Away Odds'] else odds['Best Book Away']
             odds[name + '_home'] = home_odds
             odds[name + '_away'] = away_odds
             odds[name + '_last_update'] = last_update
@@ -118,6 +135,50 @@ class OddsLogger(object):
                 df = pd.concat([df, m], axis=0)
                 df = df[~df.index.duplicated(keep='last')]
                 df.to_csv(path)
+
+    def arb_exists(self, odds_by_sb):
+        sure_bet = 0
+        best_odds = [odds_by_sb[x]
+                     for x in odds_by_sb.keys() if "Best Odds" in x]
+        for odds in best_odds:
+            d_odds = OddsLogger.decimal_odds(odds)
+            sure_bet += 1 / d_odds
+        if sure_bet < 1:
+            return True
+        else:
+            return False
+
+
+def beat_bookies(home_odds, home_team, home_book, away_odds, away_team, away_book, total_stake):
+    x, y = symbols('x y')
+    eq1 = Eq(x + y - total_stake, 0)  # total_stake = x + y
+    eq2 = Eq((away_odds*y) - home_odds*x, 0)  # odds1*x = odds2*y
+    stakes = solve((eq1, eq2), (x, y))
+    total_investment = stakes[x] + stakes[y]
+    profit1 = home_odds*stakes[x] - total_stake
+    profit2 = away_odds*stakes[y] - total_stake
+    benefit1 = f'{profit1 / total_investment * 100:.2f}%'
+    benefit2 = f'{profit2 / total_investment * 100:.2f}%'
+    dict_gabmling = {'Odds1': home_odds, 'Odds2': away_odds, 'Home Stake': f'${stakes[x]:.0f}', 'Away Stake': f'${stakes[y]:.0f}', 'Home Profit': f'${profit1:.2f}', 'Away Profit': f'${profit2:.2f}',
+                     'Benefit1': benefit1, 'Benefit2': benefit2, "Home Book": home_book, "Home Team": home_team, 'Away Book': away_book, 'Away Team': away_team}
+    return dict_gabmling
+
+    @staticmethod
+    def decimal_odds(odds: int) -> float:
+        """
+        :param odds: Integer (e.g., -350).
+        :return: Float. Odds expressed in Decimal terms.
+        """
+        if isinstance(odds, float):
+            return odds
+
+        elif isinstance(odds, int):
+            if odds >= 100:
+                return abs(1 + (odds / 100))
+            elif odds <= -101:
+                return 100 / abs(odds) + 1
+            else:
+                return float(odds)
 
 
 if __name__ == '__main__':
