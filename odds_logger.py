@@ -206,7 +206,7 @@ class DiscordAlert(object):
     """
 
     def __init__(self, msg) -> None:
-        self.url = "https://discord.com/api/webhooks/997338106258796674/m7M3DKqc12-cNphOw6qJMeWdZzo7wkDjXp1fwZihSlOV2HsQ8NkWBrR2XU25QL9h3Z8n"
+        self.url = os.getenv('WEBHOOK')
         data = {'content': msg}
         r = requests.post(url=self.url, json=data)
 
